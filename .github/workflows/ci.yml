@@ -144,19 +144,35 @@ jobs:
           sudo apt-get install -y wget curl
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
 
-      - name: Build API image for scan
-        run: docker build -t api:scan ./api
-
-      - name: Scan images
+      - name: Build images for scan
         run: |
+          docker build -t api:scan ./api
+          docker build -t worker:scan ./worker
+          docker build -t frontend:scan ./frontend
+
+      - name: Scan all service images
+        run: |
+          FAILED=0
+
           trivy image --severity CRITICAL --exit-code 1 \
-          --format sarif -o trivy.sarif api:scan
+          --format sarif -o trivy-api.sarif api:scan || FAILED=1
+
+          trivy image --severity CRITICAL --exit-code 1 \
+          --format sarif -o trivy-worker.sarif worker:scan || FAILED=1
+
+          trivy image --severity CRITICAL --exit-code 1 \
+          --format sarif -o trivy-frontend.sarif frontend:scan || FAILED=1
+
+          exit $FAILED
 
       - name: Upload SARIF
         uses: actions/upload-artifact@v4
         with:
           name: trivy-report
-          path: trivy.sarif
+          path: |
+            trivy-api.sarif
+            trivy-worker.sarif
+            trivy-frontend.sarif
 
   #------------------------
   # Integration Test Job
