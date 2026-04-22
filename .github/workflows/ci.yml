@@ -16,33 +16,28 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      # python linting
       - name: Install flake8
         run: pip install flake8
 
-      - name: Run flake*
+      - name: Run flake8
         run: flake8 .
 
-      # Js linting
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/setup-node@v3
         with:
           node-version: "18"
 
-      - name: Install frontend dependencies
+      - name: Install frontend deps
         run: |
           cd frontend
           npm ci
 
-      - name: Run ESLint (frontend)
+      - name: Run ESLint
         run: |
           cd frontend
           npx eslint .
 
-      # Dockerfile linting
       - name: Install hadolint
         run: |
           sudo wget -O /usr/local/bin/hadolint \
@@ -64,35 +59,31 @@ jobs:
         image: redis:7
         ports:
           - 6379:6379
-        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      # Run API tests
-      - name: Install dependencies
+      - name: Install API deps
         run: |
           cd api
           pip install -r requirements.txt
-          pip install httpx pytest pytest-cov
+          pip install pytest pytest-cov httpx
 
-      - name: Run API tests
+      - name: Run tests
         run: |
           cd api
           pytest --cov=. --cov-report=xml
 
-      # Run Worker tests
       - name: Upload coverage
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
-          path: coverage.xml
+          name: coverage
+          path: api/coverage.xml
 
   #------------------------
-  # Build Job
+  # PIPELINE JOB (MERGED)
   #------------------------
-  build:
+  pipeline:
     runs-on: ubuntu-latest
     needs: test
 
@@ -103,211 +94,144 @@ jobs:
           - 5000:5000
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      - name: Build and tag images
-        run: |
-          SHA=${{ github.sha }}
+      # -----------------------
+      # BUILD (using action)
+      # -----------------------
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-          docker build -t $REGISTRY/api:$SHA -t $REGISTRY/api:latest ./api
-          docker build -t $REGISTRY/worker:$SHA -t $REGISTRY/worker:latest ./worker
-          docker build -t $REGISTRY/frontend:$SHA -t $REGISTRY/frontend:latest ./frontend
+      - name: Set SHA
+        run: echo "SHA=${{ github.sha }}" >> $GITHUB_ENV
 
-      - name: Push images to registry
-        run: |
-          SHA=${{ github.sha }}
+      - name: Build & push API
+        uses: docker/build-push-action@v5
+        with:
+          context: ./api
+          push: true
+          tags: |
+            localhost:5000/api:${{ env.SHA }}
+            localhost:5000/api:latest
 
-          docker push $REGISTRY/api:$SHA
-          docker push $REGISTRY/api:latest
+      - name: Build & push Worker
+        uses: docker/build-push-action@v5
+        with:
+          context: ./worker
+          push: true
+          tags: |
+            localhost:5000/worker:${{ env.SHA }}
+            localhost:5000/worker:latest
 
-          docker push $REGISTRY/worker:$SHA
-          docker push $REGISTRY/worker:latest
+      - name: Build & push Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            localhost:5000/frontend:${{ env.SHA }}
+            localhost:5000/frontend:latest
 
-          docker push $REGISTRY/frontend:$SHA
-          docker push $REGISTRY/frontend:latest
-
-  #------------------------
-  # Security Scan Job
-  #------------------------
-  security:
-    runs-on: ubuntu-latest
-    needs: build
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
+      # -----------------------
+      # SECURITY SCAN
+      # -----------------------
       - name: Install Trivy
         run: |
           sudo apt-get update
           sudo apt-get install -y wget curl
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
 
-      - name: Scan all service images
+      - name: Scan images
         run: |
           FAILED=0
-          SHA=${{ github.sha }}
 
-          trivy image --severity CRITICAL --exit-code 1 \
-            --format sarif -o trivy-api.sarif \
-            localhost:5000/api:$SHA || FAILED=1
-
-          trivy image --severity CRITICAL --exit-code 1 \
-            --format sarif -o trivy-worker.sarif \
-            localhost:5000/worker:$SHA || FAILED=1
-
-          trivy image --severity CRITICAL --exit-code 1 \
-            --format sarif -o trivy-frontend.sarif \
-            localhost:5000/frontend:$SHA || FAILED=1
+          trivy image --severity CRITICAL --exit-code 1 localhost:5000/api:${{ env.SHA }} || FAILED=1
+          trivy image --severity CRITICAL --exit-code 1 localhost:5000/worker:${{ env.SHA }} || FAILED=1
+          trivy image --severity CRITICAL --exit-code 1 localhost:5000/frontend:${{ env.SHA }} || FAILED=1
 
           exit $FAILED
 
-      - name: Upload SARIF
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-report
-          path: |
-            trivy-api.sarif
-            trivy-worker.sarif
-            trivy-frontend.sarif
-
-  #------------------------
-  # Integration Test Job
-  #------------------------
-  integration:
-    runs-on: ubuntu-latest
-    needs: security
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Install dependencies
+      # -----------------------
+      # INTEGRATION TEST
+      # -----------------------
+      - name: Install tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
+          sudo apt-get install -y docker-compose jq
 
-      - name: Start services with Docker Compose
-        run: |
-          docker-compose up -d --build
+      - name: Start stack
+        run: docker-compose up -d --build
 
-      - name: Wait for services to be healthy
+      - name: Wait for API
         run: |
-          while ! docker ps | grep "healthy"; do
-            echo "Waiting for services to be healthy..."
+          for i in {1..12}; do
+            if curl -f http://localhost:8000/health; then exit 0; fi
             sleep 5
           done
+          exit 1
 
       - name: Submit job
-        run: |
-          curl -X POST http://localhost:8000/jobs > response.json
+        run: curl -X POST http://localhost:8000/jobs
 
-      - name: Poll until done
+      - name: Poll result
         run: |
           for i in {1..10}; do
             STATUS=$(curl -s http://localhost:8000/jobs | jq -r '.status')
-            if [ "$STATUS" = "completed" ]; then
-              exit 0
-            fi
+            if [ "$STATUS" = "completed" ]; then exit 0; fi
             sleep 3
           done
           exit 1
 
       - name: Cleanup
         if: always()
-        run: docker compose down
-
-  #------------------------
-  # Deploy Job
-  #------------------------
-  deploy:
-    runs-on: ubuntu-latest
-    needs: integration
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Pull latest images
-        run: |
-          docker pull localhost:5000/api:latest
-          docker pull localhost:5000/frontend:latest
-          docker pull localhost:5000/worker:latest
+        run: docker-compose down
 
       # -----------------------
-      # 1. API rolling deploy
+      # DEPLOY (rolling)
       # -----------------------
-      - name: Deploy API (rolling)
+      - name: Deploy API
+        if: github.ref == 'refs/heads/main'
         run: |
-          set -e
+          docker run -d --name api_new -p 8001:8000 localhost:5000/api:latest
 
-          OLD_CONTAINER=api_old
-          NEW_CONTAINER=api_new
-
-          # start new version
-          docker run -d --name $NEW_CONTAINER -p 8001:8000 localhost:5000/api:latest
-
-          # health check (60s max)
           for i in {1..12}; do
             if curl -f http://localhost:8001/health; then
-              echo "API healthy"
-              docker stop api || true
-              docker rm api || true
-              docker rename $NEW_CONTAINER api
+              docker rm -f api || true
+              docker rename api_new api
               exit 0
             fi
             sleep 5
           done
 
-          echo "API health check failed — rollback"
-          docker rm -f $NEW_CONTAINER
+          docker rm -f api_new
           exit 1
 
-      # -----------------------
-      # 2. Frontend rolling deploy
-      # -----------------------
-      - name: Deploy Frontend (rolling)
+      - name: Deploy Frontend
+        if: github.ref == 'refs/heads/main'
         run: |
-          set -e
-
-          NEW_CONTAINER=frontend_new
-
-          docker run -d --name $NEW_CONTAINER -p 3000:3000 localhost:5000/frontend:latest
+          docker run -d --name frontend_new -p 3000:3000 localhost:5000/frontend:latest
 
           for i in {1..12}; do
             if curl -f http://localhost:3000; then
-              docker stop frontend || true
-              docker rm frontend || true
-              docker rename $NEW_CONTAINER frontend
+              docker rm -f frontend || true
+              docker rename frontend_new frontend
               exit 0
             fi
             sleep 5
           done
 
-          docker rm -f $NEW_CONTAINER
+          docker rm -f frontend_new
           exit 1
 
-      # -----------------------
-      # 3. Worker rolling deploy
-      # -----------------------
-      - name: Deploy Worker (rolling)
+      - name: Deploy Worker
+        if: github.ref == 'refs/heads/main'
         run: |
-          set -e
-
-          NEW_CONTAINER=worker_new
-
-          docker run -d --name $NEW_CONTAINER localhost:5000/worker:latest
-
-          # worker usually has no HTTP health endpoint
-          # so we just check container is running
-
+          docker run -d --name worker_new localhost:5000/worker:latest
           sleep 10
 
           if docker ps | grep worker_new; then
-            docker stop worker || true
-            docker rm worker || true
-            docker rename $NEW_CONTAINER worker
+            docker rm -f worker || true
+            docker rename worker_new worker
           else
-            echo "Worker failed — rollback"
-            docker rm -f $NEW_CONTAINER
+            docker rm -f worker_new
             exit 1
           fi
