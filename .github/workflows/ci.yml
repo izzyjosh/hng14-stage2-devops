@@ -144,10 +144,13 @@ jobs:
           sudo apt-get install -y wget curl
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
 
+      - name: Build API image for scan
+        run: docker build -t api:scan ./api
+
       - name: Scan images
         run: |
           trivy image --severity CRITICAL --exit-code 1 \
-          --format sarif -o trivy.sarif localhost:5000/api:latest
+          --format sarif -o trivy.sarif api:scan
 
       - name: Upload SARIF
         uses: actions/upload-artifact@v4
