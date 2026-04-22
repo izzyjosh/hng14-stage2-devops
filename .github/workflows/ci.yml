@@ -50,6 +50,8 @@ jobs:
   #------------------------
   test:
     runs-on: ubuntu-latest
+    needs: lint
+
     services:
       redis:
         image: redis:7
@@ -125,26 +127,26 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
 
-  steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Install Trivy
-      run: |
-        sudo apt-get install -y wget
-        wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.50.0_Linux-64bit.deb
-        sudo dpkg -i trivy_0.50.0_Linux-64bit.deb
+      - name: Install Trivy
+        run: |
+          sudo apt-get install -y wget
+          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.50.0_Linux-64bit.deb
+          sudo dpkg -i trivy_0.50.0_Linux-64bit.deb
 
-    - name: Scan images
-      run: |
-        trivy image --severity CRITICAL --exit-code 1 \
-        --format sarif -o trivy.sarif localhost:5000/api:latest
+      - name: Scan images
+        run: |
+          trivy image --severity CRITICAL --exit-code 1 \
+          --format sarif -o trivy.sarif localhost:5000/api:latest
 
-    - name: Upload SARIF
-      uses: actions/upload-artifact@v4
-      with:
-        name: trivy-report
-        path: trivy.sarif
+      - name: Upload SARIF
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: trivy.sarif
 
   #------------------------
   # Integration Test Job
