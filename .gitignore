@@ -2,5 +2,6 @@ frontend/node_modules
 venv
 api/.env
 api/__pycache__
+api/tests/__pycache__
 worker/__pycache__
 .env
