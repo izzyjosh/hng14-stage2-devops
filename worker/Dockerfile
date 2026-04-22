@@ -4,8 +4,7 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1
 
 # system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # create root user 
