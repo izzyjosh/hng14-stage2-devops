@@ -274,6 +274,12 @@ jobs:
           docker build -t worker:latest ./worker
           docker build -t frontend:latest ./frontend
 
+      - name: Prepare deploy network and Redis
+        run: |
+          docker network create deploy_net || true
+          docker rm -f deploy_redis || true
+          docker run -d --name deploy_redis --network deploy_net redis:7
+
       # -----------------------
       # API ROLLING DEPLOY
       # -----------------------
@@ -281,10 +287,14 @@ jobs:
         run: |
           set -e
 
-          docker run -d --name api_new -p 8001:8000 api:latest
+          docker rm -f api_new || true
+          docker run -d --name api_new --network deploy_net \
+            -e REDIS_HOST=deploy_redis \
+            -e REDIS_PORT=6379 \
+            -p 8001:8000 api:latest
 
           for i in {1..12}; do
-            if curl -f http://localhost:8001/health; then
+            if curl -fsS http://localhost:8001/health; then
               docker rm -f api || true
               docker rename api_new api
               exit 0
@@ -292,6 +302,7 @@ jobs:
             sleep 5
           done
 
+          docker logs api_new || true
           docker rm -f api_new
           exit 1
 
@@ -302,10 +313,13 @@ jobs:
         run: |
           set -e
 
-          docker run -d --name frontend_new -p 3000:3000 frontend:latest
+          docker rm -f frontend_new || true
+          docker run -d --name frontend_new --network deploy_net \
+            -e API_URL=http://api:8000 \
+            -p 3000:3000 frontend:latest
 
           for i in {1..12}; do
-            if curl -f http://localhost:3000; then
+            if curl -fsS http://localhost:3000/health; then
               docker rm -f frontend || true
               docker rename frontend_new frontend
               exit 0
@@ -313,6 +327,7 @@ jobs:
             sleep 5
           done
 
+          docker logs frontend_new || true
           docker rm -f frontend_new
           exit 1
 
@@ -323,7 +338,10 @@ jobs:
         run: |
           set -e
 
-          docker run -d --name worker_new worker:latest
+          docker rm -f worker_new || true
+          docker run -d --name worker_new --network deploy_net \
+            -e REDIS_HOST=deploy_redis \
+            -e REDIS_PORT=6379 worker:latest
 
           sleep 10
 
@@ -331,6 +349,13 @@ jobs:
             docker rm -f worker || true
             docker rename worker_new worker
           else
+            docker logs worker_new || true
             docker rm -f worker_new
             exit 1
           fi
+
+      - name: Deploy cleanup
+        if: always()
+        run: |
+          docker rm -f deploy_redis || true
+          docker network rm deploy_net || true
