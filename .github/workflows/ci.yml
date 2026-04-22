@@ -7,7 +7,7 @@ on:
   pull_request:
 
 env:
-  REGISTRY: localhost:5000
+  REGISTRY: ghcr.io/izzyjosh
 
 jobs:
   #------------------------
@@ -144,24 +144,22 @@ jobs:
           sudo apt-get install -y wget curl
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
 
-      - name: Build images for scan
-        run: |
-          docker build -t api:scan ./api
-          docker build -t worker:scan ./worker
-          docker build -t frontend:scan ./frontend
-
       - name: Scan all service images
         run: |
           FAILED=0
+          SHA=${{ github.sha }}
 
           trivy image --severity CRITICAL --exit-code 1 \
-          --format sarif -o trivy-api.sarif api:scan || FAILED=1
+            --format sarif -o trivy-api.sarif \
+            $REGISTRY/api:$SHA || FAILED=1
 
           trivy image --severity CRITICAL --exit-code 1 \
-          --format sarif -o trivy-worker.sarif worker:scan || FAILED=1
+            --format sarif -o trivy-worker.sarif \
+            $REGISTRY/worker:$SHA || FAILED=1
 
           trivy image --severity CRITICAL --exit-code 1 \
-          --format sarif -o trivy-frontend.sarif frontend:scan || FAILED=1
+            --format sarif -o trivy-frontend.sarif \
+            $REGISTRY/frontend:$SHA || FAILED=1
 
           exit $FAILED
 
@@ -178,7 +176,7 @@ jobs:
   # Integration Test Job
   #------------------------
   integration:
-    runs-on: unbuntu-latest
+    runs-on: ubuntu-latest
     needs: security
 
     steps:
@@ -231,9 +229,9 @@ jobs:
     steps:
       - name: Pull latest images
         run: |
-          docker pull localhost:5000/api:latest
-          docker pull localhost:5000/frontend:latest
-          docker pull localhost:5000/worker:latest
+          docker pull $REGISTRY/api:latest
+          docker pull $REGISTRY/frontend:latest
+          docker pull $REGISTRY/worker:latest
 
       # -----------------------
       # 1. API rolling deploy
