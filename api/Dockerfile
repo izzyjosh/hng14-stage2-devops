@@ -5,8 +5,8 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
 # install system dependencies
-RUN apt-get update && apt-get install -y \
-    CURL \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # create non-root user
