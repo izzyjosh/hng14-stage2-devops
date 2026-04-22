@@ -3,3 +3,4 @@ venv
 api/.env
 api/__pycache__
 worker/__pycache__
+.env
