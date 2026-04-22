@@ -211,26 +211,42 @@ jobs:
         run: |
           docker compose up -d --build
 
-      - name: Wait for services to be healthy
+      - name: Wait for API to be ready
         run: |
-          while ! docker ps | grep "healthy"; do
-            echo "Waiting for services to be healthy..."
-            sleep 5
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8000/health > /dev/null; then
+              echo "API is ready"
+              exit 0
+            fi
+            echo "Waiting for API readiness..."
+            sleep 3
           done
+
+          echo "API did not become ready in time"
+          docker compose ps
+          docker compose logs api
+          exit 1
 
       - name: Submit job
         run: |
-          curl -X POST http://localhost:8000/jobs > response.json
+          curl -fsS -X POST http://localhost:8000/jobs > response.json
+          cat response.json
 
       - name: Poll until done
         run: |
+          JOB_ID=$(python3 -c "import json; print(json.load(open('response.json'))['job_id'])")
+          echo "Polling job: $JOB_ID"
+
           for i in {1..10}; do
-            STATUS=$(curl -s http://localhost:8000/jobs | jq -r '.status')
+            STATUS=$(curl -fsS http://localhost:8000/jobs/$JOB_ID | python3 -c "import sys, json; print(json.load(sys.stdin).get('status', 'unknown'))")
             if [ "$STATUS" = "completed" ]; then
               exit 0
             fi
+            echo "Current status: $STATUS"
             sleep 3
           done
+
+          docker compose logs worker
           exit 1
 
       - name: Cleanup
