@@ -130,7 +130,7 @@ jobs:
   #------------------------
   # Security Scan Job
   #------------------------
-    security:
+  security:
     runs-on: ubuntu-latest
     needs: build
 
@@ -241,87 +241,75 @@ jobs:
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - name: Pull latest images
-        run: |
-          docker pull localhost:5000/api:latest
-          docker pull localhost:5000/frontend:latest
-          docker pull localhost:5000/worker:latest
+      - name: Checkout code
+        uses: actions/checkout@v3
 
       # -----------------------
-      # 1. API rolling deploy
+      # REBUILD IMAGES (CRITICAL FIX)
+      # -----------------------
+      - name: Build images for deploy
+        run: |
+          docker build -t api:latest ./api
+          docker build -t worker:latest ./worker
+          docker build -t frontend:latest ./frontend
+
+      # -----------------------
+      # API ROLLING DEPLOY
       # -----------------------
       - name: Deploy API (rolling)
         run: |
           set -e
 
-          OLD_CONTAINER=api_old
-          NEW_CONTAINER=api_new
+          docker run -d --name api_new -p 8001:8000 api:latest
 
-          # start new version
-          docker run -d --name $NEW_CONTAINER -p 8001:8000 localhost:5000/api:latest
-
-          # health check (60s max)
           for i in {1..12}; do
             if curl -f http://localhost:8001/health; then
-              echo "API healthy"
-              docker stop api || true
-              docker rm api || true
-              docker rename $NEW_CONTAINER api
+              docker rm -f api || true
+              docker rename api_new api
               exit 0
             fi
             sleep 5
           done
 
-          echo "API health check failed — rollback"
-          docker rm -f $NEW_CONTAINER
+          docker rm -f api_new
           exit 1
 
       # -----------------------
-      # 2. Frontend rolling deploy
+      # FRONTEND DEPLOY
       # -----------------------
       - name: Deploy Frontend (rolling)
         run: |
           set -e
 
-          NEW_CONTAINER=frontend_new
-
-          docker run -d --name $NEW_CONTAINER -p 3000:3000 localhost:5000/frontend:latest
+          docker run -d --name frontend_new -p 3000:3000 frontend:latest
 
           for i in {1..12}; do
             if curl -f http://localhost:3000; then
-              docker stop frontend || true
-              docker rm frontend || true
-              docker rename $NEW_CONTAINER frontend
+              docker rm -f frontend || true
+              docker rename frontend_new frontend
               exit 0
             fi
             sleep 5
           done
 
-          docker rm -f $NEW_CONTAINER
+          docker rm -f frontend_new
           exit 1
 
       # -----------------------
-      # 3. Worker rolling deploy
+      # WORKER DEPLOY
       # -----------------------
-      - name: Deploy Worker (rolling)
+      - name: Deploy Worker
         run: |
           set -e
 
-          NEW_CONTAINER=worker_new
-
-          docker run -d --name $NEW_CONTAINER localhost:5000/worker:latest
-
-          # worker usually has no HTTP health endpoint
-          # so we just check container is running
+          docker run -d --name worker_new worker:latest
 
           sleep 10
 
           if docker ps | grep worker_new; then
-            docker stop worker || true
-            docker rm worker || true
-            docker rename $NEW_CONTAINER worker
+            docker rm -f worker || true
+            docker rename worker_new worker
           else
-            echo "Worker failed — rollback"
-            docker rm -f $NEW_CONTAINER
+            docker rm -f worker_new
             exit 1
           fi
