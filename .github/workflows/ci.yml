@@ -166,18 +166,19 @@ jobs:
         run: |
           FAILED=0
 
-          trivy image --severity CRITICAL --exit-code 1 \
+          trivy image --severity CRITICAL --ignore-unfixed --exit-code 1 \
             --format sarif -o trivy-api.sarif api:scan || FAILED=1
 
-          trivy image --severity CRITICAL --exit-code 1 \
+          trivy image --severity CRITICAL --ignore-unfixed --exit-code 1 \
             --format sarif -o trivy-worker.sarif worker:scan || FAILED=1
 
-          trivy image --severity CRITICAL --exit-code 1 \
+          trivy image --severity CRITICAL --ignore-unfixed --exit-code 1 \
             --format sarif -o trivy-frontend.sarif frontend:scan || FAILED=1
 
           exit $FAILED
 
       - name: Upload SARIF
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: trivy-report

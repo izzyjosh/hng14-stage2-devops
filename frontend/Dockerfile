@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 # prevent npm from running unnecessary scripts during installation
 ENV NODE_ENV=production
