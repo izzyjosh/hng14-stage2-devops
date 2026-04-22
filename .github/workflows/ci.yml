@@ -7,7 +7,7 @@ on:
   pull_request:
 
 env:
-  REGISTRY: ghcr.io/izzyjosh
+  REGISTRY: localhost:5000
 
 jobs:
   #------------------------
@@ -102,16 +102,9 @@ jobs:
         ports:
           - 5000:5000
 
-    permissions:
-      contents: read
-      packages: write
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
-      - name: Login to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Build and tag images
         run: |
@@ -158,15 +151,15 @@ jobs:
 
           trivy image --severity CRITICAL --exit-code 1 \
             --format sarif -o trivy-api.sarif \
-            $REGISTRY/api:$SHA || FAILED=1
+            localhost:5000/api:$SHA || FAILED=1
 
           trivy image --severity CRITICAL --exit-code 1 \
             --format sarif -o trivy-worker.sarif \
-            $REGISTRY/worker:$SHA || FAILED=1
+            localhost:5000/worker:$SHA || FAILED=1
 
           trivy image --severity CRITICAL --exit-code 1 \
             --format sarif -o trivy-frontend.sarif \
-            $REGISTRY/frontend:$SHA || FAILED=1
+            localhost:5000/frontend:$SHA || FAILED=1
 
           exit $FAILED
 
@@ -236,9 +229,9 @@ jobs:
     steps:
       - name: Pull latest images
         run: |
-          docker pull $REGISTRY/api:latest
-          docker pull $REGISTRY/frontend:latest
-          docker pull $REGISTRY/worker:latest
+          docker pull localhost:5000/api:latest
+          docker pull localhost:5000/frontend:latest
+          docker pull localhost:5000/worker:latest
 
       # -----------------------
       # 1. API rolling deploy
