@@ -75,7 +75,7 @@ jobs:
         run: |
           cd api
           pip install -r requirements.txt
-          pip install pytest pytest-cov
+          pip install httpx pytest pytest-cov
 
       - name: Run API tests
         run: |
