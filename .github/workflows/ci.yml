@@ -32,8 +32,15 @@ jobs:
         with:
           node-version: "18"
 
-      - run: npm install -g eslint
-      - run: npx eslint . --ext .js
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run ESLint (frontend)
+        run: |
+          cd frontend
+          npx eslint .
 
       # Dockerfile linting
       - name: Install hadolint
