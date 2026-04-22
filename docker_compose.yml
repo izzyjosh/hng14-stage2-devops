@@ -1,0 +1,57 @@
+name: job-queue
+
+services:
+  # redis service
+  redis:
+    image: ${REDIS_IMAGE}
+    container_name: redis
+    ports:
+      - "${REDIS_PORT}:${REDIS_INTERNAL_PORT}"
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 256m
+    cpus: 0.25
+
+  # api service
+  api:
+    build: ./api
+    container_name: api
+    ports:
+      - "${API_PORT}:${API_INTERNAL_PORT}"
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+    mem_limit: 512m
+    cpus: 0.5
+
+  # worker service
+  worker:
+    build: ./worker
+    container_name: worker
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+    mem_limit: 512m
+    cpus: 0.5
+
+  # frontend service
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    ports:
+      - "${FRONTEND_PORT}:${FRONTEND_INTERNAL_PORT}"
+    restart: always
+    mem_limit: 512m
+    cpus: 0.5

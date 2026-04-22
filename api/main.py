@@ -1,10 +1,11 @@
 from fastapi import FastAPI
 import redis
 import uuid
+import os
 
 app = FastAPI()
 
-r = redis.Redis(host="localhost", port=6379)
+r = redis.Redis(host=os.getenv("REDIS_HOST"), port=int(os.getenv("REDIS_PORT")))
 
 
 @app.post("/jobs")
