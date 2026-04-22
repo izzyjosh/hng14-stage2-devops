@@ -51,5 +51,7 @@ services:
     ports:
       - "${FRONTEND_PORT}:${FRONTEND_INTERNAL_PORT}"
     restart: always
+    environment:
+      - API_URL=${API_URL}
     mem_limit: 512m
     cpus: 0.5
