@@ -11,8 +11,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    mem_limit: 256m
-    cpus: 0.25
+    networks:
+      - app_network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
 
   # api service
   api:
@@ -27,8 +32,13 @@ services:
     environment:
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
-    mem_limit: 512m
-    cpus: 0.5
+    networks:
+      - app_network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
 
   # worker service
   worker:
@@ -41,8 +51,13 @@ services:
     environment:
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
-    mem_limit: 512m
-    cpus: 0.5
+    networks:
+      - app_network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
 
   # frontend service
   frontend:
@@ -51,7 +66,20 @@ services:
     ports:
       - "${FRONTEND_PORT}:${FRONTEND_INTERNAL_PORT}"
     restart: always
+    depends_on:
+      api:
+        condition: service_healthy
     environment:
       - API_URL=${API_URL}
-    mem_limit: 512m
-    cpus: 0.5
+    networks:
+      - app_network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
+networks:
+  app_network:
+    name: ${COMPOSE_NETWORK_NAME}
+    driver: bridge

@@ -7,7 +7,7 @@ on:
   pull_request:
 
 env:
-  REGISTRY: localhost:5000
+  REGISTRY: ${{ secrets.REGISTRY }}
 
 jobs:
   #------------------------
@@ -106,26 +106,42 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build and tag images
         run: |
           SHA=${{ github.sha }}
+          REGISTRY_ADDR=${REGISTRY:-localhost:5000}
 
-          docker build -t $REGISTRY/api:$SHA -t $REGISTRY/api:latest ./api
-          docker build -t $REGISTRY/worker:$SHA -t $REGISTRY/worker:latest ./worker
-          docker build -t $REGISTRY/frontend:$SHA -t $REGISTRY/frontend:latest ./frontend
+          docker buildx build --load \
+            --cache-from type=gha,scope=api \
+            --cache-to type=gha,mode=max,scope=api \
+            -t $REGISTRY_ADDR/api:$SHA -t $REGISTRY_ADDR/api:latest ./api
+
+          docker buildx build --load \
+            --cache-from type=gha,scope=worker \
+            --cache-to type=gha,mode=max,scope=worker \
+            -t $REGISTRY_ADDR/worker:$SHA -t $REGISTRY_ADDR/worker:latest ./worker
+
+          docker buildx build --load \
+            --cache-from type=gha,scope=frontend \
+            --cache-to type=gha,mode=max,scope=frontend \
+            -t $REGISTRY_ADDR/frontend:$SHA -t $REGISTRY_ADDR/frontend:latest ./frontend
 
       - name: Push images to registry
         run: |
           SHA=${{ github.sha }}
+          REGISTRY_ADDR=${REGISTRY:-localhost:5000}
 
-          docker push $REGISTRY/api:$SHA
-          docker push $REGISTRY/api:latest
+          docker push $REGISTRY_ADDR/api:$SHA
+          docker push $REGISTRY_ADDR/api:latest
 
-          docker push $REGISTRY/worker:$SHA
-          docker push $REGISTRY/worker:latest
+          docker push $REGISTRY_ADDR/worker:$SHA
+          docker push $REGISTRY_ADDR/worker:latest
 
-          docker push $REGISTRY/frontend:$SHA
-          docker push $REGISTRY/frontend:latest
+          docker push $REGISTRY_ADDR/frontend:$SHA
+          docker push $REGISTRY_ADDR/frontend:latest
 
   #------------------------
   # Security Scan Job
