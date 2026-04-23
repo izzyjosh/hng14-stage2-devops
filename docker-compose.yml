@@ -81,5 +81,5 @@ services:
 
 networks:
   app_network:
-    name: ${COMPOSE_NETWORK_NAME}
+    name: ${COMPOSE_NETWORK_NAME:-job-queue-network}
     driver: bridge
